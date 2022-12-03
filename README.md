@@ -60,6 +60,8 @@ Install AD-Enumerator
 -u    Specify username
 -p    Specify password
 -d    Specify domain
+-SO   Do save output to file (default True)
+-DS   Don't save output but print to console
 ```
 
 ## Usage
