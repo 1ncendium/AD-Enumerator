@@ -18,6 +18,10 @@ Windows Active Directory enumeration tool for Linux, written in Python. Can be u
 - Enumerate DNS
 
 
+## Description
+ad-enumerator.py will, with default settings, enumerate LDAP, DNS and SMB. For each protocol it will create a output file that will be saved under the adenumerator directory. You can turn on SSL. This comes in handy for protocols like LDAP. Also you can specify a domain which is required for DNS and some of the SMB enumerator options.
+
+
 ## Compatibility
 
 Tested only on Kali Linux with Python 3.10.8. The tool should work on other distro's and Python versions.
@@ -43,8 +47,20 @@ Install AD-Enumerator
   cd AD-Enumerator
   pip install -r requirements.txt
 ```
-    
-## Usage/Examples
+
+## Options
+
+-D    Do use DNS enumeration
+-S    Do use SMB enumeration
+-L    Do use LDAP enumeration
+-A    Use all enumeration options
+--SSL Do use SSL
+-t    Specify target IP
+-u    Specify username
+-p    Specify password
+-d    Specify domain
+
+## Usage
 
 ```bash
 Enumerate everything anonymously (default)         ad-enumerator.py -t 10.10.10.10
