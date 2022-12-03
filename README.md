@@ -50,6 +50,7 @@ Install AD-Enumerator
 
 ## Options
 
+```txt
 -D    Do use DNS enumeration
 -S    Do use SMB enumeration
 -L    Do use LDAP enumeration
@@ -59,10 +60,11 @@ Install AD-Enumerator
 -u    Specify username
 -p    Specify password
 -d    Specify domain
+```
 
 ## Usage
 
-```bash
+```txt
 Enumerate everything anonymously (default)         ad-enumerator.py -t 10.10.10.10
 Enumerate ldap anonymously                         ad-enumerator.py -t 10.10.10.10 -L
 Enumerate SMB anonymously                          ad-enumerator.py -t 10.10.10.10 -S
