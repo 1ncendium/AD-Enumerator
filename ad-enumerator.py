@@ -23,6 +23,10 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
+# TO DO 
+# - RPC enumerator
+# - Kerberos authentication
+#
 import os
 import ldap3
 from ldap3 import NTLM
@@ -34,6 +38,17 @@ import smbclient
 import dns.resolver
 import socket
 from contextlib import closing
+
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
 
 class ADenumerate:
 
@@ -49,6 +64,17 @@ class ADenumerate:
         if not self.args.target:
             print(parser.print_help())
             return
+
+        # Check if there is atleast one protocol specified
+        if not self.args.ldap and not self.args.smb and not self.args.dns and not self.args.all:
+            print(f"{bcolors.FAIL}[!]{bcolors.ENDC} Need atleast one protocol (-L, -S, -D or -A for all")
+            time.sleep(1)
+            print(parser.print_help())
+            return
+
+        # Check if DontSave argument is set
+        if self.args.DontSave:
+            self.args.SaveOutput = False
 
         # Make adenumerator directory if SaveOutput is set to True
         if self.args.SaveOutput:
@@ -88,7 +114,7 @@ class ADenumerate:
         with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
             sock.settimeout(3)
             if sock.connect_ex((self.args.target, port)) == 0:
-                print(f"[+] {protocol} port {port} is opened on {self.args.target}")
+                print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} {protocol} port {port} is opened on {self.args.target}")
                 return True
             else:
                 # Return False
@@ -107,23 +133,23 @@ class ADenumerate:
         conn = self.try_connection(port, 'LDAP')
 
         if not conn:
-            set_custom_ldap = input(f"[!] Could not reach LDAP on port 3268, would you like to specify a custom port? [y/N] > ")
+            set_custom_ldap = input(f"{bcolors.FAIL}[!]{bcolors.ENDC} Could not reach LDAP on port 3268, would you like to specify a custom port? [y/N] > ")
 
             if set_custom_ldap == 'y' or set_custom_ldap == 'Y':
-                custom_ldap = int(input("[+] Specify LDAP port > "))
+                custom_ldap = int(input(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Specify LDAP port > "))
             else:
                 return
 
             # Check if port is valid from a range of valid ports
             if int(custom_ldap) not in range(1, 65535):
-                print("[!] That is not a valid port")
+                print(f"{bcolors.FAIL}[!]{bcolors.ENDC} That is not a valid port")
                 return
             
             # Retry connecting to LDAP using a TCP socket
             retry_conn = self.try_connection(custom_ldap, 'LDAP')
             
             if not retry_conn:
-                print(f"[!] Could not reach port {custom_ldap} on {self.args.target} for LDAP")
+                print(f"{bcolors.FAIL}[!]{bcolors.ENDC} Could not reach port {custom_ldap} on {self.args.target} for LDAP")
                 return
             else:
                 port = custom_ldap
@@ -135,7 +161,7 @@ class ADenumerate:
 
             # If no password argument has been specified try to connect anonymously.
             if not self.args.password:
-                print("[+] No credentials specified for LDAP, trying to connect anonymously")
+                print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} No credentials specified for LDAP, trying to connect anonymously")
                 time.sleep(1)
                 connection = ldap3.Connection(server)
                 connection.bind()
@@ -143,13 +169,15 @@ class ADenumerate:
                 # Check if there is some output and return it.
                 output = server.info
                 if output == None: 
-                    print("Something went wrong dumping LDAP output, maybe you specified the wrong credentials?")
+                    print(f"{bcolors.FAIL}[!]{bcolors.ENDC} Could not connect anonymously to", server)
+                    return
                 else:
-                    print("[+] Succesfully connected anonymously to", server)
+                    print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Succesfully retrieved LDAP server info from", server)
+                    print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Trying to authenticate anonymously to", server)
                     time.sleep(1)
 
 
-            # Else use credentials to authenticate.
+            # Else use credentials (NTLM) to authenticate.
             else:
                 if self.args.domain:
                     username = f"{self.args.domain}\{self.args.username}"
@@ -157,50 +185,65 @@ class ADenumerate:
                 else:
                     connection = ldap3.Connection(server, self.args.username, password=self.args.password)
 
+                # Bind to LDAP connection
                 connection.bind()
-                print(f"[+] Authenticated to LDAP as {connection.extend.standard.who_am_i()}")
 
-                # Now try to get de Base DN using a tempfile.
-                with open('file.temp', 'w') as tempfile:
-                    tempfile.write(str(server.info))
-                    tempfile.close()
+                valid = server.info
+                if valid == None: 
+                    print(f"{bcolors.FAIL}[!]{bcolors.ENDC} Something went wrong dumping LDAP output, maybe you specified the wrong credentials?")
+                    return
+                else:
+                    print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Authenticated to LDAP as {connection.extend.standard.who_am_i()}")
 
-                with open('file.temp', 'r') as tempfile:
-                    for line in tempfile:
-                        pass
-                    last_line = line
-                base_dn = last_line.replace('CN=Configuration,', '').replace(' ', '')
+            # Now try to get de Base DN using a tempfile.
+            with open('file.temp', 'w') as tempfile:
+                tempfile.write(str(server.info))
+                tempfile.close()
 
-                # Remove the tempfile
-                os.remove('file.temp')
+            with open('file.temp', 'r') as tempfile:
+                for line in tempfile:
+                    if "CN=Configuration" in line:
+                        base_dn = line.split(',')
+                        base_dn = f"{base_dn[-2]},{base_dn[-1]}"
+                        base_dn = base_dn.replace('\n', '')
+                        continue
 
-                print("[i] Getting data... ")
-                time.sleep(1)
+            # Remove the tempfile
+            os.remove('file.temp')
 
-                def getldapdata(query):
-                    """
-                    Will use the connection object to search trough the ldap server.
-                    Needs a query argument to search.
-                    """
+            print("[i] Getting data... ")
+            time.sleep(1)
 
-                    search_filter = f"(objectClass=*)"
-                    connection.search(f"CN={query},"+base_dn, search_filter)
-                    
-                    print(f"[+] Found {len(connection.response)} {query} trough LDAP")
+            def getldapdata(query):
+                """
+                Will use the connection object to search trough the ldap server.
+                Needs a query argument to search.
+                """
 
-                    output = f"---Begin {query}---" 
-                    output += '\n'
-                    for i in connection.response:
-                        output += i['dn']
-                        output += '\n'
-                    output += f"---End {query}---" 
-                    output += '\n'
+                search_filter = f"(objectClass=*)"
+                connection.search(f"CN={query},"+base_dn, search_filter)
                 
-                    return output
-                
-                # Getting users
-                users = getldapdata('Users')
+                print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Found {len(connection.response)} {query} trough LDAP")
 
+                output = f"---Begin {query}---" 
+                output += '\n'
+                for i in connection.response:
+                    output += i['dn']
+                    output += '\n'
+                output += f"---End {query}---" 
+                output += '\n'
+            
+                return output
+            
+            # Getting users
+            users = getldapdata('Users')
+
+            # Check if CN in users output, if not then we are most likely not allowed to authenticate anonymously.
+            if "CN" not in users:
+                print(f"{bcolors.WARNING }[-]{bcolors.ENDC} Could not authenticate anonymously to", server)
+
+                output = str(server.info)
+            else:
                 # Getting computers
                 computers = getldapdata('Computers')
 
@@ -218,7 +261,9 @@ class ADenumerate:
             # If SaveOutput is set to True, then save the output to ldap.txt
             if self.args.SaveOutput:
                 self.save_output('ldap.txt', output)
-                print("[+] Successfully saved LDAP data to ldap.txt under the adenumerator folder")
+                print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Successfully saved LDAP data to ldap.txt under the adenumerator folder")
+            else:
+                print(output)
 
         except Exception as e:
             print(e)
@@ -236,58 +281,61 @@ class ADenumerate:
         conn = self.try_connection(port, 'SMB')
 
         if not conn:
-            set_custom_smb = input(f"[!] Could not reach SMB on port 445, would you like to specify a custom port? [y/N] > ")
+            set_custom_smb = input(f"{bcolors.FAIL}[!]{bcolors.ENDC} Could not reach SMB on port 445, would you like to specify a custom port? [y/N] > ")
 
             if set_custom_smb == 'y' or set_custom_smb == 'Y':
-                custom_smb = int(input("[+] Specify SMB port > "))
+                custom_smb = int(input(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Specify SMB port > "))
             else:
                 return
 
             # Check if port is valid from a range of valid ports
             if int(custom_smb) not in range(1, 65535):
-                print("[!] That is not a valid port")
+                print(f"{bcolors.FAIL}[!]{bcolors.ENDC} That is not a valid port")
                 return
             
             # Retry connecting to SMB using a TCP socket
             retry_conn = self.try_connection(custom_smb, 'SMB')
             
             if not retry_conn:
-                print(f"[!] Could not reach port {custom_smb} on {self.args.target} for SMB")
+                print(f"{bcolors.FAIL}[!]{bcolors.ENDC} Could not reach port {custom_smb} on {self.args.target} for SMB")
                 return
             else:
                 port = custom_smb
 
-
         try:
-            
             # First try to setup a anonymous session if no password argument is set.
             # We will first try to list shares using smbclient.
             if not self.args.password:
                 try:
-                    print("[+] No password set for SMB, trying to list shares anonymously")
+                    print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} No password set for SMB, trying to list shares anonymously")
 
-                    if self.args.SaveOutput:
-                        smb_shares = os.popen(f'smbclient -L \\\\{self.args.target} -U " "%" " 2>/dev/null').read()
-                    else:
-                        os.system(f'smbclient -L \\\\{self.args.target} -U " "%" "')
+                    smb_shares = os.popen(f'smbclient -L \\\\{self.args.target} -U " "%" " 2>/dev/null').read()
+
+                    if "NT_STATUS_LOGON_FAILURE" in smb_shares:
+                        print(f"{bcolors.WARNING }[-]{bcolors.ENDC} Could not connect to SMB anonymously")
+                        return
 
                 except Exception:
-                    print("[-] Could not connect to SMB anonymously")
+                    print(f"{bcolors.WARNING }[-]{bcolors.ENDC} Could not connect to SMB anonymously")
 
-                print(f"[+] Succesfuly connected anonymously to SMB on {self.args.target}")
+                print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Succesfuly connected anonymously to SMB on {self.args.target}")
 
             else:
                 # First check if we have valid credentials
-                username = f"{self.args.domain}\{self.args.username}"
+
+                if self.args.domain:
+                    username = f"{self.args.domain}\{self.args.username}"
+                else:
+                    username = self.args.username
                 try:
-                    print(f"[+] Trying to connect to SMB as {username}")
+                    print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Trying to connect to SMB as {username}")
                     sess = smbclient.register_session(self.args.target, username=username, password=self.args.password, connection_timeout=10 )
 
                 except Exception:
-                    print("[!] Invalid credentials or domain specified")
+                    print(f"{bcolors.FAIL}[!]{bcolors.ENDC} Invalid credentials or domain specified")
                     return
 
-                print(f"[+] Succesfully connected to SMB as {username}")
+                print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Succesfully connected to SMB as {username}")
 
                 if not self.args.SaveOutput:
                     os.system(f'smbclient -L \\\\{self.args.target} -U {self.args.username}%{self.args.password}')
@@ -300,7 +348,7 @@ class ADenumerate:
                 if self.args.SaveOutput:
                     smb_users = os.popen(f"crackmapexec smb {self.args.target} -u '{self.args.username}' -p '{self.args.password}' --users").read()
 
-                    print("[+] Successfully saved found users to smb.txt under the ./adenumerator directory")
+                    print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Successfully saved found users to smb.txt under the ./adenumerator directory")
                     
                 else:
                     os.system(f"crackmapexec smb {self.args.target} -u '{self.args.username}' -p '{self.args.password}' --users")
@@ -314,7 +362,7 @@ class ADenumerate:
                 
         except Exception as e:
             print(e)
-            print("[-] Invalid credentials for SMB")
+            print(f"{bcolors.WARNING }[-]{bcolors.ENDC} Invalid credentials for SMB")
 
     def init_dns(self):    
         """
@@ -323,29 +371,29 @@ class ADenumerate:
 
         # First check if the argument domain is set.
         if not self.args.domain:
-            print("[!] DNS needs a domain! see --help")
+            print(f"{bcolors.FAIL}[!]{bcolors.ENDC} DNS needs a domain! see --help")
             return
 
         # First check if we can connect to DNS
         conn = self.try_connection(53, 'DNS')
         if not conn:
-            set_custom_dns = input(f"[!] Could not reach DNS on port 53, would you like to specify a custom port? [y/N] > ")
+            set_custom_dns = input(f"{bcolors.FAIL}[!]{bcolors.ENDC} Could not reach DNS on port 53, would you like to specify a custom port? [y/N] > ")
 
             if set_custom_dns == 'y' or set_custom_dns == 'Y':
-                custom_dns = int(input("[+] Specify DNS port > "))
+                custom_dns = int(input(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Specify DNS port > "))
             else:
                 return
 
             # Check if port is valid from a range of valid ports
             if int(custom_dns) not in range(1, 65535):
-                print("[!] That is not a valid port")
+                print(f"{bcolors.FAIL}[!]{bcolors.ENDC} That is not a valid port")
                 return
             
             # Retry connecting to DNS using a TCP socket
             retry_conn = self.try_connection(custom_dns, 'DNS')
             
             if not retry_conn:
-                print(f"[!] Could not reach port {custom_dns} on {self.args.target} for DNS")
+                print(f"{bcolors.FAIL}[!]{bcolors.ENDC} Could not reach port {custom_dns} on {self.args.target} for DNS")
                 return
 
 
@@ -375,16 +423,16 @@ class ADenumerate:
             except dns.resolver.NoAnswer:
                 pass
             except dns.resolver.NXDOMAIN:
-                print(f"[!] Domain {self.args.domain} does not exist!")
+                print(f"{bcolors.FAIL}[!]{bcolors.ENDC} Domain {self.args.domain} does not exist!")
                 return
             except dns.resolver.LifetimeTimeout:
-                print(f"[!] Domain {self.args.domain} does not exist!")
+                print(f"{bcolors.FAIL}[!]{bcolors.ENDC} Domain {self.args.domain} does not exist!")
                 return
         
         # Save DNS output to file if argument SaveOutput is set to True
         if self.args.SaveOutput:
-            print("[+] Succesfully resolved domain")
-            print("[+] Saving DNS resolve output to dns.txt under ./adenumerator")
+            print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Succesfully resolved domain")
+            print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Saving DNS resolve output to dns.txt under ./adenumerator")
             
             output = ""
 
@@ -396,30 +444,34 @@ class ADenumerate:
 
 if __name__ == '__main__':
 
+    # Define a parser for arguments
     parser = argparse.ArgumentParser(
         description='Active Directory Enumerator',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=textwrap.dedent(""" Examples:
-            Enumerate everything anonymously (default)         ad-enumerator.py -t 10.10.10.10
             Enumerate ldap anonymously                         ad-enumerator.py -t 10.10.10.10 -L
             Enumerate SMB anonymously                          ad-enumerator.py -t 10.10.10.10 -S
-            Enumerate DNS anonymously                          ad-enumerator.py -t 10.10.10.10 -D -d domain.local
-            Enumerate everything anonymously (default)         ad-enumerator.py -t 10.10.10.10 -A
+            Enumerate DNS                                      ad-enumerator.py -t 10.10.10.10 -D -d domain.local
+            Enumerate everything anonymously                   ad-enumerator.py -t 10.10.10.10 -A
             Enumerate everything using credentials and domain  ad-enumerator.py -t 10.10.10.10 -A -U <username> -p <password> -d <domain>
             Using credentials                                  ad-enumerator.py -t 10.10.10.10 -<protocol> -u <username> -p <password>
             """ ))
+
+    # Define arguments for the parser
     parser.add_argument('-D', '--dns', action='store_true', help='Do use DNS enumeration')
     parser.add_argument('-S', '--smb', action='store_true', help='Do use SMB enumeration')
     parser.add_argument('-L', '--ldap', action='store_true', help='Do use LDAP enumeration')
-    parser.add_argument('-A', '--all', action='store_true', default='True', help='Do use all enumeration options')
-    parser.add_argument('--SSL', action='store_true', default=False, help='Do use all enumeration options')
+    parser.add_argument('-A', '--all', action='store_true', default=False, help='Do use all enumeration options')
+    parser.add_argument('--SSL', action='store_true', default=False, help='Do use SSL')
     parser.add_argument('-t', '--target', help='Target IP')
     parser.add_argument('-u', '--username', help='Specify username')
     parser.add_argument('-p', '--password', help='Specify password')
     parser.add_argument('-d', '--domain', help='Specify the domain')
-    parser.add_argument('-SO', '--SaveOutput', action='store_true', default=True, help='If set, this script will make a directory and save the enumeration output')
+    parser.add_argument('-SO', '--SaveOutput', action='store_true', default=True, help='If set (default True), this script will make a directory and save the enumeration output')
+    parser.add_argument('-DS', '--DontSave', action='store_true', help='If set, this script will NOT save output but instead print the output')
     args = parser.parse_args()
 
+    # Intro
     intro = """
 ad-enumerator.py by Incendium. Please use responsibly.
 -------------------------------------------------------------------------
@@ -427,8 +479,9 @@ ad-enumerator.py by Incendium. Please use responsibly.
 
     print(intro)
 
+    # If there is less then 2 arguments, we will print out the help menu
     if len(sys.argv[1:]) < 2:
-        print("ad-enumerator.py [-h] [-D DNS] [-S SMB] [-L LDAP] [-R RPC] [-A ALL] [-t TARGET IP]")
+        print("ad-enumerator.py [-h] [-u] [-p] [-D DNS] [-S SMB] [-L LDAP] [-A ALL] [-t TARGET IP]")
         print("")
         print(parser.epilog)
         sys.exit(0)
