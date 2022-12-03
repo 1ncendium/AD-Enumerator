@@ -50,7 +50,7 @@ Install AD-Enumerator
 Enumerate everything anonymously (default)         ad-enumerator.py -t 10.10.10.10
 Enumerate ldap anonymously                         ad-enumerator.py -t 10.10.10.10 -L
 Enumerate SMB anonymously                          ad-enumerator.py -t 10.10.10.10 -S
-Enumerate DNS anonymously                          ad-enumerator.py -t 10.10.10.10 -D -d domain.local
+Enumerate DNS anonymously                          ad-enumerator.py -t 10.10.10.10 -D -d <domain>
 Enumerate everything anonymously (default)         ad-enumerator.py -t 10.10.10.10 -A
 Enumerate everything using credentials and domain  ad-enumerator.py -t 10.10.10.10 -A -U <username> -p <password> -d <domain>
 Using credentials                                  ad-enumerator.py -t 10.10.10.10 -<protocol> -u <username> -p <password>
