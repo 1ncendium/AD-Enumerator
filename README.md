@@ -42,7 +42,7 @@ Install AD-Enumerator
 ```bash
   git clone https://github.com/1ncendium/AD-Enumerator.git
   cd AD-Enumerator
-  pip install -r requirements.txt
+  pip3 install -r requirements.txt
 ```
 
 ## Options
