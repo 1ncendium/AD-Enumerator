@@ -7,7 +7,8 @@ Windows Active Directory enumeration tool for Linux, written in Python. Can be u
 
 - [@1ncendium](https://github.com/1ncendium)
 
-
+## Description
+ad-enumerator.py can enumerate LDAP, DNS or/and SMB depending on which protocol you choose. You can also choose to enumerate all protocols, see for more info the options. For each protocol it will create a output file that will be saved under the adenumerator directory. You can turn on SSL. This comes in handy for protocols like LDAP. Also you can specify a domain which is required for DNS and some of the SMB enumerator options.
 
 ## Features
 
@@ -16,10 +17,6 @@ Windows Active Directory enumeration tool for Linux, written in Python. Can be u
 - Enumerate SMB shares anonymously & with credentials
 - Enumerate SMB users with credentials
 - Enumerate DNS
-
-
-## Description
-ad-enumerator.py can enumerate LDAP, DNS or/and SMB depending on which protocol you choose. You can also choose to enumerate all protocols, see for more info the options. For each protocol it will create a output file that will be saved under the adenumerator directory. You can turn on SSL. This comes in handy for protocols like LDAP. Also you can specify a domain which is required for DNS and some of the SMB enumerator options.
 
 
 ## Compatibility
