@@ -29,7 +29,6 @@
 #
 import os
 import ldap3
-from ldap3 import NTLM
 import argparse
 import textwrap
 import sys
@@ -181,7 +180,7 @@ class ADenumerate:
             else:
                 if self.args.domain:
                     username = f"{self.args.domain}\{self.args.username}"
-                    connection = ldap3.Connection(server, username, password=self.args.password, authentication=NTLM)
+                    connection = ldap3.Connection(server, username, password=self.args.password, authentication=ldap3.NTLM)
                 else:
                     connection = ldap3.Connection(server, self.args.username, password=self.args.password)
 
