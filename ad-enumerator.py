@@ -1,10 +1,10 @@
 #!/usr/bin/python3
-# ad-enumerator.py - Windows Active Directory enumeration tool for Linux
-# Copyright (C) 2022 Incendium
+# ad-enumerator.py - Windows Active Directory enumeration tool for Linux.
+# Copyright (C) 2022 Incendium.
 #
-# This tool may be used for legal purposes only.  Users take full responsibility
-# for any actions performed using this tool.  The author accepts no liability
-# for damage caused by this tool.  If these terms are not acceptable to you, then
+# This tool may be used for legal purposes only. Users take full responsibility
+# for any actions performed using this tool. The author accepts no liability
+# for damage caused by this tool. If these terms are not acceptable to you, then
 # you are not permitted to use this tool.
 #
 # In all other respects the GPL version 2 applies:
@@ -16,7 +16,7 @@
 # 
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 # GNU General Public License for more details.
 # 
 # You should have received a copy of the GNU General Public License along
@@ -41,7 +41,7 @@ from contextlib import closing
 
 class bcolors:
     """
-    Set colors for status output
+    Define colors for status output.
     """
     OKGREEN = '\033[92m'
     WARNING = '\033[93m'
@@ -55,7 +55,7 @@ class ADenumerate:
  
     def run(self):
         """
-        Run is a function that will start the initialization for the arguments that have been set.
+        Run is a function that will start the initialization for enumerating the protocols that have been specified.
         """
 
         # Check if there is a target set
@@ -63,9 +63,9 @@ class ADenumerate:
             print(parser.print_help())
             return
 
-        # Check if there is atleast one protocol specified
+        # Check if there is at least one protocol specified
         if not self.args.ldap and not self.args.smb and not self.args.dns and not self.args.all:
-            print(f"{bcolors.FAIL}[!]{bcolors.ENDC} Need atleast one protocol (-L, -S, -D or -A for all")
+            print(f"{bcolors.FAIL}[!]{bcolors.ENDC} Need at least one protocol (-L, -S, -D or -A for all")
             time.sleep(1)
             print(parser.print_help())
             return
@@ -123,7 +123,7 @@ class ADenumerate:
         Initialize ldap will try to setup a connection to LDAP and enumerate it.
         """
         
-        print("[i] Initializing LDAP....")
+        print("[i] Initializing LDAP...")
 
         # First setup a socket to see if LDAP is running
         # If LDAP runs, continue, else ask for custom port
@@ -154,6 +154,8 @@ class ADenumerate:
 
         # Specify server using ldap3
         server = ldap3.Server(self.args.target, port=port, get_info = ldap3.ALL, use_ssl=self.args.SSL, connect_timeout=5)
+        server_name = str(server)
+        server_name = server_name.replace(' - cleartext', '')
 
         try:
 
@@ -167,11 +169,11 @@ class ADenumerate:
                 # Check if there is some output and return it.
                 output = server.info
                 if output == None: 
-                    print(f"{bcolors.FAIL}[!]{bcolors.ENDC} Could not connect anonymously to", server)
+                    print(f"{bcolors.FAIL}[!]{bcolors.ENDC} Could not connect anonymously to", server_name)
                     return
                 else:
-                    print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Succesfully retrieved LDAP server info from", server)
-                    print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Trying to authenticate anonymously to", server)
+                    print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Succesfully retrieved LDAP server info from", server_name)
+                    print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Trying to authenticate anonymously to", server_name)
                     time.sleep(1)
 
 
@@ -188,26 +190,28 @@ class ADenumerate:
 
                 valid = server.info
                 if valid == None: 
-                    print(f"{bcolors.FAIL}[!]{bcolors.ENDC} Something went wrong dumping LDAP output, maybe you specified the wrong credentials?")
+                    print(f"{bcolors.FAIL}[!]{bcolors.ENDC} Something went wrong dumping LDAP output, maybe you specified wrong credentials or no domain?")
                     return
                 else:
                     print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Authenticated to LDAP as {connection.extend.standard.who_am_i()}")
 
-            # Now try to get de Base DN using a tempfile.
-            with open('file.temp', 'w') as tempfile:
-                tempfile.write(str(server.info))
-                tempfile.close()
-
-            with open('file.temp', 'r') as tempfile:
-                for line in tempfile:
-                    if "CN=Configuration" in line:
-                        base_dn = line.split(',')
-                        base_dn = f"{base_dn[-2]},{base_dn[-1]}"
-                        base_dn = base_dn.replace('\n', '')
-                        continue
-
-            # Remove the tempfile
-            os.remove('file.temp')
+            # Define a variable for the content of server.info
+            info = str(server.info)
+            base_dn = None
+            
+            # Use the info variable to see if "CN=Configuration" exists in the variable.
+            # If it exists, we wan't to get the Base DN (root) of the domain.
+            for line in info.split("\n"):
+                if "CN=Configuration" in line:
+                    base_dn = line.split(',')
+                    base_dn = f"{base_dn[-2]},{base_dn[-1]}"
+                    base_dn = base_dn.replace('\n', '')
+                    break
+                
+            # If base_dn still equals None, we will be unable to continue enumerating LDAP.
+            if base_dn == None:
+                print(f"{bcolors.FAIL }[!]{bcolors.ENDC} Could not retrieve server info from LDAP. Unable to continue with LDAP")
+                return
 
             print("[i] Getting data... ")
             time.sleep(1)
@@ -220,6 +224,10 @@ class ADenumerate:
 
                 search_filter = f"(objectClass=*)"
                 connection.search(f"CN={query},"+base_dn, search_filter)
+
+                if query == 'Users':
+                    if len(connection.response) == 0:
+                        return 'AuthError'
                 
                 print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Found {len(connection.response)} {query} trough LDAP")
 
@@ -236,10 +244,9 @@ class ADenumerate:
             # Getting users
             users = getldapdata('Users')
 
-            # Check if CN in users output, if not then we are most likely not allowed to authenticate anonymously.
-            if "CN" not in users:
-                print(f"{bcolors.WARNING }[-]{bcolors.ENDC} Could not authenticate anonymously to", server)
-
+            # Check if CN in users output, if not then we are most likely not allowed to authenticate.
+            if users == 'AuthError':
+                print(f"{bcolors.WARNING }[-]{bcolors.ENDC} Could not authenticate to", server_name)
                 output = str(server.info)
             else:
                 # Getting computers
@@ -265,7 +272,7 @@ class ADenumerate:
 
         except Exception as e:
             print(e)
-            print("Cannot connect to", server)
+            print("Cannot connect to", server_name)
 
     
     def init_smb(self):    
@@ -279,7 +286,7 @@ class ADenumerate:
         conn = self.try_connection(port, 'SMB')
 
         if not conn:
-            set_custom_smb = input(f"{bcolors.FAIL}[!]{bcolors.ENDC} Could not reach SMB on port 445, would you like to specify a custom port? [y/N] > ")
+            set_custom_smb = input(f"{bcolors.WARNING}[-]{bcolors.ENDC} Could not reach SMB on port 445, would you like to specify a custom port? [y/N] > ")
 
             if set_custom_smb == 'y' or set_custom_smb == 'Y':
                 custom_smb = int(input(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Specify SMB port > "))
@@ -312,11 +319,15 @@ class ADenumerate:
                     if "NT_STATUS_LOGON_FAILURE" in smb_shares:
                         print(f"{bcolors.WARNING }[-]{bcolors.ENDC} Could not connect to SMB anonymously")
                         return
+                    
+                    print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Succesfuly connected anonymously to SMB on {self.args.target}")
+
+                    if not self.args.SaveOutput:
+                        print(smb_shares)
 
                 except Exception:
                     print(f"{bcolors.WARNING }[-]{bcolors.ENDC} Could not connect to SMB anonymously")
-
-                print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Succesfuly connected anonymously to SMB on {self.args.target}")
+                    return
 
             else:
                 # First check if we have valid credentials
@@ -369,13 +380,13 @@ class ADenumerate:
 
         # First check if the argument domain is set.
         if not self.args.domain:
-            print(f"{bcolors.FAIL}[!]{bcolors.ENDC} DNS needs a domain! see --help")
+            print(f"{bcolors.FAIL}[!]{bcolors.ENDC} DNS resolver needs a domain! see --help")
             return
 
         # First check if we can connect to DNS
         conn = self.try_connection(53, 'DNS')
         if not conn:
-            set_custom_dns = input(f"{bcolors.FAIL}[!]{bcolors.ENDC} Could not reach DNS on port 53, would you like to specify a custom port? [y/N] > ")
+            set_custom_dns = input(f"{bcolors.WARNING}[-]{bcolors.ENDC} Could not reach DNS on port 53, would you like to specify a custom port? [y/N] > ")
 
             if set_custom_dns == 'y' or set_custom_dns == 'Y':
                 custom_dns = int(input(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Specify DNS port > "))
@@ -427,9 +438,10 @@ class ADenumerate:
                 print(f"{bcolors.FAIL}[!]{bcolors.ENDC} Domain {self.args.domain} does not exist!")
                 return
         
+        print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Succesfully resolved domain")
+        
         # Save DNS output to file if argument SaveOutput is set to True
         if self.args.SaveOutput:
-            print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Succesfully resolved domain")
             print(f"{bcolors.OKGREEN}[+]{bcolors.ENDC} Saving DNS resolve output to dns.txt under ./adenumerator")
             
             output = ""
@@ -477,12 +489,15 @@ ad-enumerator.py by Incendium. Please use responsibly.
 
     print(intro)
 
-    # If there is less then 2 arguments, we will print out the help menu
+    # If there is less than 2 arguments, we will print out the help menu.
     if len(sys.argv[1:]) < 2:
         print("ad-enumerator.py [-h] [-u] [-p] [-D DNS] [-S SMB] [-L LDAP] [-A ALL] [-t TARGET IP]")
         print("")
         print(parser.epilog)
         sys.exit(0)
 
+    # Parse arguments to ADenumerate class.
     enumerator = ADenumerate(args)
+
+    # Call the run function in the ADenumerate class.
     enumerator.run()
